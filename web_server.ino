@@ -131,7 +131,7 @@ String pmHtml(float val, float pmtype) {
   String label = "PM" + String(pmtype,1);
   char buf[32];
   snprintf(buf, sizeof(buf), "%.2f", val);
-  String html = label + ": <span style='color:" + color + ";font-weight:bold'>" + buf + " (" + cat + ")</span> &mu;g/m³<br>";
+  String html = label + ": <span style='color:" + color + ";font-weight:bold'>" + buf + " &mu;g/m³ (" + cat + ")</span><br>";
   return html;
 }
 
@@ -153,8 +153,72 @@ String ncHtml(const String& label, float val) {
   String color = ncColor(cat);
   char buf[32];
   snprintf(buf, sizeof(buf), "%.2f", val);
-  String html = label + ": <span style='color:" + color + ";font-weight:bold'>" + buf + " (" + cat + ")</span> /cm³<br>";
+  String html = label + ": <span style='color:" + color + ";font-weight:bold'>" + buf + " /cm³ (" + cat + ")</span><br>";
   return html;
+}
+
+// Gas resistance: higher = cleaner
+String gasCategory(float val) {
+  if (val > 20) return "EXCELLENT";
+  else if (val > 15) return "GOOD";
+  else if (val > 10) return "MODERATE";
+  else if (val > 5) return "POOR";
+  else return "HAZARDOUS";
+}
+
+String humidityCategory(float val) {
+  if (val < 20) return "EXTREMELY DRY";
+  if (val < 30) return "DRY";
+  if (val <= 60) return "COMFORT";
+  if (val <= 70) return "WET";
+  return "VERY WET (Mold Risk)";
+}
+
+String pressureCategory(float val) {
+  if (val < 990) return "VERY LOW (Storms Likely)";
+  if (val < 1007) return "LOW (Unsettled)";
+  if (val <= 1020) return "NORMAL";
+  return "HIGH (Fair/Sunny)";
+}
+
+String pressureNote(float val) {
+  if (val < 990) return "(Storms or rapid weather change likely)";
+  if (val < 1007) return "(Unsettled, rain possible)";
+  if (val <= 1020) return "(Normal)";
+  return "(Fair, stable, sunny weather likely)";
+}
+
+float estimateAltitude(float pressure_hPa) {
+  // Standard formula, 1013.25 hPa at sea level
+  return 44330.0 * (1.0 - pow(pressure_hPa / 1013.25, 0.1903));
+}
+
+String envColor(const String& category) {
+  if (category.indexOf("EXCELLENT") >= 0) return "#2ecc40";   // green
+  if (category.indexOf("GOOD") >= 0)      return "#0074d9";   // blue
+  if (category.indexOf("MODERATE") >= 0)  return "#ffdc00";   // yellow
+  if (category.indexOf("POOR") >= 0)      return "#ff851b";   // orange
+  if (category.indexOf("HAZARDOUS") >= 0) return "#ff4136";   // red
+  if (category.indexOf("DRY") >= 0)       return "#ff851b";   // orange for DRY
+  if (category.indexOf("WET") >= 0)       return "#0074d9";   // blue for WET
+  if (category.indexOf("Mold") >= 0)      return "#ff4136";   // red for Mold Risk
+  if (category.indexOf("COMFORT") >= 0)   return "#2ecc40";   // green for comfort
+  return "#111";
+}
+
+String envHtml(const String& label, float val, const String& unit, const String& category, const String& extra = "") {
+  String color = envColor(category);
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%.1f", val);
+  String html = label + ": <span style='color:" + color + ";font-weight:bold'>" + buf + " " + unit + " (" + category + ")</span> ";
+  if (extra.length()) html += " <span style='color:#888;font-size:0.9em'>" + extra + "</span>";
+  html += "<br>";
+  return html;
+}
+
+float estimateAltitudeFeet(float pressure_hPa) {
+  float altitude_m = 44330.0 * (1.0 - pow(pressure_hPa / 1013.25, 0.1903));
+  return altitude_m * 3.28084; // meters to feet
 }
 
 void loop() {
@@ -212,12 +276,19 @@ void loop() {
       float humidity = bme.humidity;
       float pressure = bme.pressure / 100.0;
       float gas = bme.gas_resistance / 1000.0;
+      float altitude = estimateAltitude(pressure);
 
-      client.print("Temperature: "); client.print(tempC, 1); client.println(" &deg;C<br>");
-      client.print("Temperature: "); client.print(tempF, 1); client.println(" &deg;F<br>");
-      client.print("Humidity: "); client.print(humidity, 1); client.println(" %<br>");
-      client.print("Pressure: "); client.print(pressure, 1); client.println(" hPa<br>");
-      client.print("Gas Resistance: "); client.print(gas, 1); client.println(" kΩ<br>");
+      client.print(envHtml("Humidity", humidity, "%", humidityCategory(humidity)));
+      client.print(envHtml("Pressure", pressure, "hPa", pressureCategory(pressure), pressureNote(pressure)));
+
+      float altitude_ft = estimateAltitudeFeet(pressure);
+      char alt_buf[32];
+      snprintf(alt_buf, sizeof(alt_buf), "%.0f", altitude_ft);
+      client.print("Estimated altitude: <span style='color:#0074d9;font-weight:bold;'>");
+      client.print(alt_buf);
+      client.println(" ft</span> above sea level<br>");
+
+      client.print(envHtml("Gas Resistance", gas, "k&Omega;", gasCategory(gas)));
 
       Serial.print("[BME688] Temp: ");
       Serial.print(tempC, 1); Serial.print(" C (");
@@ -229,6 +300,40 @@ void loop() {
       client.println("<span style='color:red;'>BME688 reading failed!</span><br>");
       Serial.println("[BME688] Sensor read failed!");
     }
+
+    // --- ENVIRONMENTAL REFERENCE TABLES ---
+    client.println("<h4>Environmental Reference Ranges</h4>");
+    client.println("<table class='aqref'>");
+    client.println("<tr><th>Category</th><th>Gas (k&Omega;)</th></tr>");
+    client.println("<tr><td><span style='color:#2ecc40'>Excellent</span></td><td>&gt;20</td></tr>");
+    client.println("<tr><td><span style='color:#0074d9'>Good</span></td><td>15–20</td></tr>");
+    client.println("<tr><td><span style='color:#ffdc00'>Moderate</span></td><td>10–15</td></tr>");
+    client.println("<tr><td><span style='color:#ff851b'>Poor</span></td><td>5–10</td></tr>");
+    client.println("<tr><td><span style='color:#ff4136'>Hazardous</span></td><td>&lt;5</td></tr>");
+    client.println("</table>");
+
+    client.println("<h4>Humidity &amp; Pressure Descriptions</h4>");
+    client.println("<table class='aqref'>");
+    client.println("<tr><th>Humidity (%)</th><th>Description</th></tr>");
+    client.println("<tr><td>&lt;20</td><td>Extremely Dry</td></tr>");
+    client.println("<tr><td>20–29</td><td>Dry</td></tr>");
+    client.println("<tr><td>30–60</td><td>Comfort (Ideal)</td></tr>");
+    client.println("<tr><td>61–70</td><td>Wet</td></tr>");
+    client.println("<tr><td>&gt;70</td><td>Very Wet (Mold Risk)</td></tr>");
+    client.println("</table>");
+    client.println("<table class='aqref'>");
+    client.println("<tr><th>Pressure (hPa)</th><th>Meaning</th></tr>");
+    client.println("<tr><td>&gt;1020</td><td>High (Fair, sunny)</td></tr>");
+    client.println("<tr><td>1007–1020</td><td>Normal</td></tr>");
+    client.println("<tr><td>990–1006</td><td>Low (Rain/Unsettled)</td></tr>");
+    client.println("<tr><td>&lt;990</td><td>Very Low (Storms Likely, headache risk)</td></tr>");
+    client.println("</table>");
+    client.println("<p style='font-size:0.9em;color:#555'>Pressure can also estimate your altitude above sea level.<br>");
+    client.println("Rapid drops may cause headaches or signal incoming storms.</p>");
+
+
+    
+    client.println("</br></br><hr></br></br>");
 
     // --- SPS30 DATA ---
     client.println("<h3>Sensirion SPS30 (Particulate Matter)</h3>");
