@@ -100,6 +100,63 @@ int mapToPercent(float val, float minVal, float maxVal, bool invert = false) {
   return invert ? (100 - int(mapped)) : int(mapped);
 }
 
+String pmCategory(float val, float pmtype) {
+  if (pmtype == 2.5) {
+    if (val <= 5.0) return "EXCELLENT";
+    else if (val <= 12.0) return "GOOD";
+    else if (val <= 35.4) return "MODERATE";
+    else if (val <= 55.4) return "POOR";
+    else return "HAZARDOUS";
+  } else { // PM10 & fallback
+    if (val <= 10.0) return "EXCELLENT";
+    else if (val <= 54.0) return "GOOD";
+    else if (val <= 154.0) return "MODERATE";
+    else if (val <= 254.0) return "POOR";
+    else return "HAZARDOUS";
+  }
+}
+
+String pmColor(const String& category) {
+  if (category == "EXCELLENT") return "#2ecc40";   // green
+  if (category == "GOOD")     return "#0074d9";    // blue
+  if (category == "MODERATE") return "#ffdc00";    // yellow
+  if (category == "POOR")     return "#ff851b";    // orange
+  if (category == "HAZARDOUS")return "#ff4136";    // red
+  return "#111"; // default dark gray
+}
+
+String pmHtml(float val, float pmtype) {
+  String cat = pmCategory(val, pmtype);
+  String color = pmColor(cat);
+  String label = "PM" + String(pmtype,1);
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%.2f", val);
+  String html = label + ": <span style='color:" + color + ";font-weight:bold'>" + buf + " (" + cat + ")</span> &mu;g/m³<br>";
+  return html;
+}
+
+String ncCategory(float val) {
+  if (val <= 10.0) return "EXCELLENT";
+  else if (val <= 50.0) return "GOOD";
+  else if (val <= 100.0) return "MODERATE";
+  else if (val <= 300.0) return "POOR";
+  else return "HAZARDOUS";
+}
+
+String ncColor(const String& category) {
+  // Use same color palette as PM
+  return pmColor(category);
+}
+
+String ncHtml(const String& label, float val) {
+  String cat = ncCategory(val);
+  String color = ncColor(cat);
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%.2f", val);
+  String html = label + ": <span style='color:" + color + ";font-weight:bold'>" + buf + " (" + cat + ")</span> /cm³<br>";
+  return html;
+}
+
 void loop() {
   WiFiClient client = server.accept();
 
@@ -137,6 +194,13 @@ void loop() {
     client.println("<!DOCTYPE html><html><head><title>Environmental Sensor Data</title>");
     client.println("<meta charset='UTF-8'>");
     client.println("<meta name='viewport' content='width=device-width, initial-scale=1'>");
+    client.println("<style>");
+    client.println("body { font-family: Arial, sans-serif; background:#f5f5f5; color:#222; }");
+    client.println("h2 { color: #0074d9; }");
+    client.println("table.aqref { border-collapse: collapse; margin-top:1em; }");
+    client.println("table.aqref td, table.aqref th { border:1px solid #ccc;padding:2px 8px; font-size:0.9em; }");
+    client.println("table.aqref th { background: #eee; }");
+    client.println("</style>");
     client.println("</head><body>");
     client.println("<h2>Raspberry Pi Pico W Air Quality</h2>");
 
@@ -169,11 +233,12 @@ void loop() {
     // --- SPS30 DATA ---
     client.println("<h3>Sensirion SPS30 (Particulate Matter)</h3>");
     if (spsOk) {
+      
       // Mass concentrations
-      client.print("PM 1.0: "); client.print(m.mc_1p0, 2); client.println(" &mu;g/m³<br>");
-      client.print("PM 2.5: "); client.print(m.mc_2p5, 2); client.println(" &mu;g/m³<br>");
-      client.print("PM 4.0: "); client.print(m.mc_4p0, 2); client.println(" &mu;g/m³<br>");
-      client.print("PM10.0: "); client.print(m.mc_10p0, 2); client.println(" &mu;g/m³<br>");
+      client.print(pmHtml(m.mc_1p0, 1.0));
+      client.print(pmHtml(m.mc_2p5, 2.5));
+      client.print(pmHtml(m.mc_4p0, 4.0));
+      client.print(pmHtml(m.mc_10p0, 10.0));
       
       Serial.print("[SPS30] PM1.0: "); Serial.print(m.mc_1p0, 2); Serial.print(" ug/m3 | ");
       Serial.print("PM2.5: "); Serial.print(m.mc_2p5, 2); Serial.print(" ug/m3 | ");
@@ -182,11 +247,11 @@ void loop() {
 
 #ifndef SPS30_LIMITED_I2C_BUFFER_SIZE
       // Number concentrations
-      client.print("NC 0.5: "); client.print(m.nc_0p5, 2); client.println(" /cm³<br>");
-      client.print("NC 1.0: "); client.print(m.nc_1p0, 2); client.println(" /cm³<br>");
-      client.print("NC 2.5: "); client.print(m.nc_2p5, 2); client.println(" /cm³<br>");
-      client.print("NC 4.0: "); client.print(m.nc_4p0, 2); client.println(" /cm³<br>");
-      client.print("NC 10.0: "); client.print(m.nc_10p0, 2); client.println(" /cm³<br>");
+      client.print(ncHtml("NC 0.5", m.nc_0p5));
+      client.print(ncHtml("NC 1.0", m.nc_1p0));
+      client.print(ncHtml("NC 2.5", m.nc_2p5));
+      client.print(ncHtml("NC 4.0", m.nc_4p0));
+      client.print(ncHtml("NC 10.0", m.nc_10p0));
       client.print("Typical particle size: "); client.print(m.typical_particle_size, 2); client.println(" &mu;m<br>");
 
       Serial.print("NC0.5: "); Serial.print(m.nc_0p5, 2); Serial.print(" /cm3 | ");
@@ -200,6 +265,20 @@ void loop() {
       client.println("<span style='color:red;'>SPS30 reading failed!</span><br>");
       Serial.println("[SPS30] Sensor read failed!");
     }
+
+    // --- AIR QUALITY REFERENCE TABLE ---
+    client.println("<hr><h4>Air Quality Reference Ranges</h4>");
+    client.println("<table class='aqref'>");
+    client.println("<tr><th>Category</th><th>PM2.5 (&mu;g/m³)</th><th>PM10 (&mu;g/m³)</th><th>NC (particles/cm³)</th></tr>");
+    client.println("<tr><td style='color:#2ecc40;font-weight:bold'>EXCELLENT</td><td>0–5</td><td>0–10</td><td>0–10</td></tr>");
+    client.println("<tr><td style='color:#0074d9;font-weight:bold'>GOOD</td><td>5.1–12</td><td>10.1–54</td><td>10.1–50</td></tr>");
+    client.println("<tr><td style='color:#ffdc00;font-weight:bold'>MODERATE</td><td>12.1–35.4</td><td>55–154</td><td>50.1–100</td></tr>");
+    client.println("<tr><td style='color:#ff851b;font-weight:bold'>POOR</td><td>35.5–55.4</td><td>155–254</td><td>100.1–300</td></tr>");
+    client.println("<tr><td style='color:#ff4136;font-weight:bold'>HAZARDOUS</td><td>55.5+</td><td>255+</td><td>300+</td></tr>");
+    client.println("</table>");
+    client.println("<p style='font-size:0.9em;color:#555'>PM reference: US EPA &amp; WHO guidelines. NC ranges are research-based, not regulatory.<br>");
+    client.println("‘NC’ = number concentration of particles per cubic centimeter.</p>");
+
 
     // --- AUTO REFRESH ---
     // client.println("<p><small>Page refreshes every 5 seconds</small></p>");
