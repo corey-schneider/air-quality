@@ -104,9 +104,9 @@ void loop() {
   WiFiClient client = server.accept();
 
   if (client) {
-    Serial.println("Client connected");
+    // Serial.println("Client connected");
     String request = client.readStringUntil('\r');
-    Serial.println("Request: " + request);
+    // Serial.println("Request: " + request);
     client.flush();
 
     // --- BME688 READ ---
@@ -143,18 +143,27 @@ void loop() {
     // --- BME688 DATA ---
     client.println("<h3>BME688 Sensor</h3>");
     if (bmeOk) {
+      float tempC = bme.temperature;
       float tempF = bme.temperature * 9.0 / 5.0 + 32.0;
       float humidity = bme.humidity;
       float pressure = bme.pressure / 100.0;
       float gas = bme.gas_resistance / 1000.0;
 
-      client.print("Temperature: "); client.print(bme.temperature, 1); client.println(" &deg;C<br>");
+      client.print("Temperature: "); client.print(tempC, 1); client.println(" &deg;C<br>");
       client.print("Temperature: "); client.print(tempF, 1); client.println(" &deg;F<br>");
       client.print("Humidity: "); client.print(humidity, 1); client.println(" %<br>");
       client.print("Pressure: "); client.print(pressure, 1); client.println(" hPa<br>");
       client.print("Gas Resistance: "); client.print(gas, 1); client.println(" kΩ<br>");
+
+      Serial.print("[BME688] Temp: ");
+      Serial.print(tempC, 1); Serial.print(" C (");
+      Serial.print(tempF, 1); Serial.print(" F), Humidity: ");
+      Serial.print(humidity, 1); Serial.print(" %, Pressure: ");
+      Serial.print(pressure, 1); Serial.print(" hPa, Gas: ");
+      Serial.print(gas, 1); Serial.println(" kOhm");
     } else {
       client.println("<span style='color:red;'>BME688 reading failed!</span><br>");
+      Serial.println("[BME688] Sensor read failed!");
     }
 
     // --- SPS30 DATA ---
@@ -165,6 +174,12 @@ void loop() {
       client.print("PM 2.5: "); client.print(m.mc_2p5, 2); client.println(" &mu;g/m³<br>");
       client.print("PM 4.0: "); client.print(m.mc_4p0, 2); client.println(" &mu;g/m³<br>");
       client.print("PM10.0: "); client.print(m.mc_10p0, 2); client.println(" &mu;g/m³<br>");
+      
+      Serial.print("[SPS30] PM1.0: "); Serial.print(m.mc_1p0, 2); Serial.print(" ug/m3 | ");
+      Serial.print("PM2.5: "); Serial.print(m.mc_2p5, 2); Serial.print(" ug/m3 | ");
+      Serial.print("PM4.0: "); Serial.print(m.mc_4p0, 2); Serial.print(" ug/m3 | ");
+      Serial.print("PM10.0: "); Serial.print(m.mc_10p0, 2); Serial.println(" ug/m3");
+
 #ifndef SPS30_LIMITED_I2C_BUFFER_SIZE
       // Number concentrations
       client.print("NC 0.5: "); client.print(m.nc_0p5, 2); client.println(" /cm³<br>");
@@ -173,9 +188,17 @@ void loop() {
       client.print("NC 4.0: "); client.print(m.nc_4p0, 2); client.println(" /cm³<br>");
       client.print("NC 10.0: "); client.print(m.nc_10p0, 2); client.println(" /cm³<br>");
       client.print("Typical particle size: "); client.print(m.typical_particle_size, 2); client.println(" &mu;m<br>");
+
+      Serial.print("NC0.5: "); Serial.print(m.nc_0p5, 2); Serial.print(" /cm3 | ");
+      Serial.print("NC1.0: "); Serial.print(m.nc_1p0, 2); Serial.print(" /cm3 | ");
+      Serial.print("NC2.5: "); Serial.print(m.nc_2p5, 2); Serial.print(" /cm3 | ");
+      Serial.print("NC4.0: "); Serial.print(m.nc_4p0, 2); Serial.print(" /cm3 | ");
+      Serial.print("NC10.0: "); Serial.print(m.nc_10p0, 2); Serial.println(" /cm3");
+      Serial.print("Typical particle size: "); Serial.print(m.typical_particle_size, 2); Serial.println(" um");
 #endif
     } else {
       client.println("<span style='color:red;'>SPS30 reading failed!</span><br>");
+      Serial.println("[SPS30] Sensor read failed!");
     }
 
     // --- AUTO REFRESH ---
@@ -185,6 +208,6 @@ void loop() {
 
     delay(1);
     client.stop();
-    Serial.println("Client disconnected");
+    // Serial.println("Client disconnected");
   }
 }
